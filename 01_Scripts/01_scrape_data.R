@@ -39,5 +39,11 @@ dim(geih_raw)
 glimpse(geih_raw)
 
 # Guardamos la base de datos en archivos crudos
-write_csv(geih_raw, here("02_Data", "Raw", "geih_raw.csv"))
+
+dir.create(here("02_Data", "Raw"), recursive = TRUE, showWarnings = FALSE)
+
+write_csv(
+  geih_raw,
+  here("02_Data", "Raw", "geih_raw.csv")
+)
 
