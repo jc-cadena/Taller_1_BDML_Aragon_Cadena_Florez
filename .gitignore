@@ -1,0 +1,27 @@
+# R 
+.Rhistory
+.RData
+.Rproj.user
+*.Rproj
+
+# Datos temporales
+03_temp/
+
+# Outputs (opcional: si quieres versionar figuras, quita esta línea)
+# 02_output/
+
+
+
+### macOS ###
+# General
+.DS_Store
+.AppleDouble
+.LSOverride
+
+
+### Windows ###
+# Windows thumbnail cache files
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
