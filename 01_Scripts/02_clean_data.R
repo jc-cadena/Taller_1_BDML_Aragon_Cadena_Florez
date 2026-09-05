@@ -6,20 +6,29 @@
 #         Data/Processed/na_income_profile.csv
 
 library(pacman)
-p_load(tidyverse, here)
+p_load(tidyverse, here, skimr)
 
 geih_raw <- readRDS(here("02_Data", "Raw", "geih_raw.rds"))
 
-# Resumen general de las variables clave (sin filtrar aún)
-geih_raw |>
-  select(age, ocu, sex, y_total_m, totalHoursWorked, relab) |>
-  summary()
+# A continuación, decidimos volver numéricas las variables clave
 
+# Primero, creamos vector con los nombres de las variables
+
+nombres_vars <- c("directorio", "secuencia_p", "orden", "ocu", "y_total_m",
+                  "sex", "maxEducLevel","p6050", "estrato1", "totalHoursWorked",
+                  "relab", "formal", "sizeFirm", "oficio", "p6426","chunk")
+
+# Luego, procedemos con el cambio de tipo de variable 
+
+geih_raw <- geih_raw |>
+  mutate(across(all_of(nombres_vars), as.numeric))
+
+# Finalmente, hacemos un primer diagnóstico
+# Vemos cuántos faltantes hay y cómo se distribuye cada variable
+skim(geih_raw)
 
 
 # Incluimos el conteo de los menores del hogar (5 y 10 años)
-geih_raw <- geih_raw %>%
-  mutate(age = as.numeric(age))
 
 ninos_hogar <- geih_raw %>%
   group_by(directorio, secuencia_p) %>%
