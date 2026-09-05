@@ -8,12 +8,30 @@
 library(pacman)
 p_load(tidyverse, here)
 
-geih_raw <- read_csv(here("02_Data", "Raw", "geih_raw.rds"))
+geih_raw <- readRDS(here("02_Data", "Raw", "geih_raw.rds"))
 
 # Resumen general de las variables clave (sin filtrar aún)
 geih_raw |>
   select(age, ocu, sex, y_total_m, totalHoursWorked, relab) |>
   summary()
+
+
+
+# Incluimos el conteo de los menores del hogar (5 y 10 años)
+geih_raw <- geih_raw %>%
+  mutate(age = as.numeric(age))
+
+ninos_hogar <- geih_raw %>%
+  group_by(directorio, secuencia_p) %>%
+  summarise(
+    n_ninos_under5  = sum(age < 5, na.rm = TRUE),
+    n_ninos_under10 = sum(age < 10, na.rm = TRUE),
+    total_personas   = n(),
+    .groups = "drop"
+  )
+
+geih_raw <- geih_raw %>% 
+  left_join(ninos_hogar, by = c("directorio", "secuencia_p"))
 
 # --Restringimos la muestra a personas que reportan estar empleadas y tiene más de 18 años--
 geih_sample <- geih_raw |>
@@ -56,8 +74,15 @@ geih_sample <- geih_sample |>
     maxEducLevel = as.factor(maxEducLevel)
   )
 
+# Incluimos variable de jefe de hogar
+geih_sample <- geih_sample |>
+  mutate(
+    jefe_hogar    = ifelse(p6050 == 1, 1, 0)
+  )
+
+
 # Verificación rápida de tipos y niveles
-sapply(geih_sample[c("relab", "Female", "maxEducLevel")], class)
+sapply(geih_sample[c("relab", "Female", "maxEducLevel","jefe_hogar")], class)
 table(geih_sample$relab, useNA = "ifany")
 table(geih_sample$maxEducLevel, useNA = "ifany")
 
@@ -72,7 +97,7 @@ geih_sample |>
   )
 
 # =============================================================
-# Documentamos el grupo de NAs en ingreso (posible subreporte)
+# Documentamos el grupo de NAs en ingreso
 # =============================================================
 # Según la decisión de limpieza: estos NAs se excluyen de los modelos de
 # regresión, pero se documentan como un grupo que posiblemente está
