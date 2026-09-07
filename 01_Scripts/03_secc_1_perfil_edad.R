@@ -10,14 +10,13 @@
 
 library(pacman)
 
-p_load(tidyverse, stargazer, here, conflicted)
+p_load(tidyverse, stargazer, here, conflicted, boot)
 
 conflict_prefer("filter", "dplyr")
 conflict_prefer("select", "dplyr")
 options(scipen = 999)
 
 # Se definen rutas del proyecto
-.
 ruta_datos   <- here("02_Data", "Processed", "geih_clean.rds")
 ruta_figuras <- here("03_Output", "Figures")
 ruta_tablas  <- here("03_Output", "Tables")
@@ -66,7 +65,8 @@ geih <- geih |>
     # "Otro" las que tengan menos de 100 observaciones. Sin esto, en la Sección 3
     # es casi seguro que algún oficio aparezca en validación y no en
     # entrenamiento, y predict() se cae con "factor has new levels".
-    oficio_fac = fct_lump_min(factor(oficio), min = 100, other_level = "Otro")
+    oficio_fac = fct_lump_min(factor(oficio), min = 100, other_level = "Otro"),
+    fweight = as.numeric(fweight)
   )
 
 # Salvaguarda sobre el logaritmo. 02_clean_data.R recorta la muestra entre los
@@ -86,7 +86,7 @@ if (n_no_finito > 0) {
 vars_analisis <- c("log_y", "age", "Female", "educ_fac", "totalHoursWorked",
                    "relab_fac", "formal_fac", "sizeFirm_fac", "oficio_fac",
                    "estrato_fac", "p6426", "jefe_hogar", "n_ninos_under5",
-                   "n_ninos_under10", "total_personas", "chunk")
+                   "n_ninos_under10", "total_personas", "chunk", "fweight")
 
 n_antes <- nrow(geih)
 
@@ -105,7 +105,7 @@ c(antes = n_antes, despues = nrow(geih), perdidas = n_antes - nrow(geih))
 perfil_observado <- geih |>
   group_by(age) |>
   summarise(
-    log_y_promedio = mean(log_y),
+    log_y_promedio = weighted.mean(log_y, w=fweight),
     n = n(),
     .groups = "drop"
   )
@@ -136,9 +136,19 @@ fig_perfil_observado
 
 forma_incondicional <- log_y ~ age + I(age^2)
 
-modelo_incondicional <- lm(forma_incondicional, data = geih)
+mod_incondicional_ols <- lm(
+  forma_incondicional,
+  data = geih
+)
 
-summary(modelo_incondicional)
+mod_incondicional_wls <- lm(
+  forma_incondicional,
+  data = geih,
+  weights = fweight
+)
+
+summary(mod_incondicional_ols)
+summary(mod_incondicional_wls)
 
 ###### 5. La edad pico #####
 
@@ -150,51 +160,95 @@ calcular_edad_pico <- function(modelo) {
   as.numeric(-b_edad / (2 * b_edad2))
 }
 
-edad_pico_incondicional <- calcular_edad_pico(modelo_incondicional)
+edad_pico_inc_ols <- calcular_edad_pico(mod_incondicional_ols)
 
-edad_pico_incondicional
-coef(modelo_incondicional)["I(age^2)"] < 0   # ¿es un máximo?
+edad_pico_inc_wls <- calcular_edad_pico(mod_incondicional_wls)
+
+edad_pico_inc_ols
+edad_pico_inc_wls
+
+coef(mod_incondicional_ols)["I(age^2)"] < 0   # ¿es un máximo?
 range(geih$age)                               # ¿está dentro del rango?
 
+coef(mod_incondicional_wls)["I(age^2)"] < 0   # ¿es un máximo?
+range(geih$age)                               # ¿está dentro del rango?
 
 ##### 6. Intervalo de confianza bootstrap para la edad pico #####
 
-boot_edad_pico <- function(datos, formula, B = 1000, semilla = 123) {
-
+boot_edad_pico <- function(datos,formula,B = 1000,semilla = 123,usar_pesos = FALSE){
+  
   set.seed(semilla)
-
-  picos <- rep(NA, B)   # vector vacío donde guardamos las B edades pico
-
-  for (i in 1:B) {
-
-    # sample_frac(size = 1, replace = TRUE): muestra del 100% del tamaño
-    # original, con reemplazo. Es la muestra bootstrap.
-    muestra_b <- sample_frac(datos, size = 1, replace = TRUE)
-
-    modelo_b <- lm(formula, data = muestra_b)
-
+  picos <- rep(NA, B)
+  for(i in 1:B){
+    
+    muestra_b <- sample_frac(
+      datos,
+      size = 1,
+      replace = TRUE
+    )
+    
+    if(usar_pesos){
+      
+      modelo_b <- lm(
+        formula,
+        data = muestra_b,
+        weights = fweight
+      )
+      
+    } else {
+      
+      modelo_b <- lm(
+        formula,
+        data = muestra_b
+      )
+    }
     picos[i] <- calcular_edad_pico(modelo_b)
   }
-
   picos
 }
 
 # B = 1000 réplicas
-picos_incondicional <- boot_edad_pico(geih, forma_incondicional, B = 1000)
+picos_inc_ols <- boot_edad_pico(
+  geih,
+  forma_incondicional,
+  B = 1000,
+  usar_pesos = FALSE
+)
 
-ic_incondicional <- quantile(picos_incondicional, probs = c(0.025, 0.975))
-se_incondicional <- sd(picos_incondicional)
+picos_inc_wls <- boot_edad_pico(
+  geih,
+  forma_incondicional,
+  B = 1000,
+  usar_pesos = TRUE
+)
 
-edad_pico_incondicional
-ic_incondicional
-se_incondicional
+ic_inc_ols <- quantile(
+  picos_inc_ols,
+  probs = c(.025,.975)
+)
+
+ic_inc_wls <- quantile(
+  picos_inc_wls,
+  probs = c(.025,.975)
+)
+se_inc_ols <- sd(picos_inc_ols)
+
+se_inc_wls <- sd(picos_inc_wls)
+
+edad_pico_inc_ols
+ic_inc_ols
+se_inc_ols
+
+edad_pico_inc_wls
+ic_inc_wls
+se_inc_wls
 
 # Histograma de la distribución bootstrap.
-fig_boot_pico <- tibble(pico = picos_incondicional) |>
+fig_boot_pico <- tibble(pico = picos_inc_ols) |>
   ggplot(aes(x = pico)) +
   geom_histogram(bins = 40, fill = "#3a5e8c", color = "white", alpha = 0.85) +
-  geom_vline(xintercept = edad_pico_incondicional, color = "#d55e00", linewidth = 1) +
-  geom_vline(xintercept = ic_incondicional, color = "#d55e00", linetype = "dashed") +
+  geom_vline(xintercept = edad_pico_inc_ols, color = "#d55e00", linewidth = 1) +
+  geom_vline(xintercept = ic_inc_ols, color = "#d55e00", linetype = "dashed") +
   labs(
     title = "Distribución bootstrap de la edad pico",
     subtitle = "Perfil incondicional, 1.000 réplicas",
@@ -208,36 +262,113 @@ fig_boot_pico <- tibble(pico = picos_incondicional) |>
 
 fig_boot_pico
 
+fig_boot_pico_wls <- tibble(pico = picos_inc_wls) |>
+  ggplot(aes(x = pico)) +
+  geom_histogram(bins = 40, fill = "#3a5e8c", color = "white", alpha = 0.85) +
+  geom_vline(xintercept = edad_pico_inc_wls, color = "#d55e00", linewidth = 1) +
+  geom_vline(xintercept = ic_inc_wls, color = "#d55e00", linetype = "dashed") +
+  labs(
+    title = "Distribución bootstrap de la edad pico (ponderado)",
+    subtitle = "Perfil incondicional, 1.000 réplicas",
+    x = "Edad pico implicada (años)",
+    y = "Frecuencia",
+    caption = paste0("Fuente: cálculos propios con la muestra GEIH 2018 - Bogotá.\n",
+                     "Nota: línea sólida, estimación puntual; punteadas, intervalo ",
+                     "percentil al 95%.")
+  ) +
+  theme_bw()
+
+fig_boot_pico_wls
+
 ##### 7. Perfil condicional #####
 
 #   lm(log_y ~ age + I(age^2) + totalHoursWorked + factor(relab_detailed), data = geih)
 
 forma_condicional <- log_y ~ age + I(age^2) + totalHoursWorked + relab_fac
 
-modelo_condicional <- lm(forma_condicional, data = geih)
+mod_condicional_ols <- lm(
+  forma_condicional,
+  data = geih
+)
 
-summary(modelo_condicional)
+mod_condicional_wls <- lm(
+  forma_condicional,
+  data = geih,
+  weights = fweight
+)
+summary(mod_condicional_ols)
+summary(mod_condicional_wls)
 
-edad_pico_condicional <- calcular_edad_pico(modelo_condicional)
+edad_pico_cond_ols <- calcular_edad_pico(
+  mod_condicional_ols
+)
 
-picos_condicional <- boot_edad_pico(geih, forma_condicional, B = 1000)
-ic_condicional    <- quantile(picos_condicional, probs = c(0.025, 0.975))
-se_condicional    <- sd(picos_condicional)
+edad_pico_cond_wls <- calcular_edad_pico(
+  mod_condicional_wls
+)
 
-edad_pico_condicional
-ic_condicional
+picos_cond_ols <- boot_edad_pico(
+  geih,
+  forma_condicional,
+  B = 1000,
+  usar_pesos = FALSE
+)
+
+picos_cond_wls <- boot_edad_pico(
+  geih,
+  forma_condicional,
+  B = 1000,
+  usar_pesos = TRUE
+)
+
+ic_cond_ols <- quantile(
+  picos_cond_ols,
+  probs = c(.025,.975)
+)
+
+ic_cond_wls <- quantile(
+  picos_cond_wls,
+  probs = c(.025,.975)
+)
+
+se_cond_ols <- sd(picos_cond_ols)
+
+se_cond_wls <- sd(picos_cond_wls)
+
+edad_pico_cond_ols
+ic_cond_ols
+se_cond_ols
+
+edad_pico_cond_wls
+ic_cond_wls
+se_cond_wls
 
 ##### 8. Tabla de resultados #####
 
 stargazer(
-  modelo_incondicional, modelo_condicional,
+  mod_incondicional_ols,mod_condicional_ols,
   type = "text",
   title = "Perfil edad-ingreso laboral",
-  column.labels = c("Incondicional", "Condicional"),
+  column.labels = c("Inc. OLS","Cond. OLS"),
   dep.var.labels = "log(ingreso laboral mensual)",
   covariate.labels = c("Edad", "Edad al cuadrado", "Horas trabajadas"),
   omit = "relab_fac",
   omit.labels = "Efectos de tipo de vinculación",
+  add.lines = list(c("Controles de vinculación", "No", "Sí")),
+  keep.stat = c("n", "rsq", "adj.rsq"),
+  digits = 4
+)
+
+stargazer(
+  mod_incondicional_wls,mod_condicional_wls,
+  type = "text",
+  title = "Perfil edad-ingreso laboral",
+  column.labels = c("Inc. WLS","Cond."),
+  dep.var.labels = "log(ingreso laboral mensual)",
+  covariate.labels = c("Edad", "Edad al cuadrado", "Horas trabajadas"),
+  omit = "relab_fac",
+  omit.labels = "Efectos de tipo de vinculación",
+  add.lines = list(c("Controles de vinculación", "No", "Sí")),
   keep.stat = c("n", "rsq", "adj.rsq"),
   digits = 4
 )
@@ -245,13 +376,47 @@ stargazer(
 # La edad pico y su intervalo no salen de stargazer: hay que agregarlos como
 # filas adicionales al pie de la tabla.
 tab_edad_pico <- tibble(
-  especificacion = c("Incondicional", "Condicional"),
-  edad_pico      = c(edad_pico_incondicional, edad_pico_condicional),
-  se_bootstrap   = c(se_incondicional, se_condicional),
-  ic_inferior    = c(ic_incondicional[1], ic_condicional[1]),
-  ic_superior    = c(ic_incondicional[2], ic_condicional[2]),
-  r2             = c(summary(modelo_incondicional)$r.squared,
-                     summary(modelo_condicional)$r.squared)
+  especificacion = c(
+    "Incondicional OLS",
+    "Condicional OLS",
+    "Incondicional WLS",
+    "Condicional WLS"
+  ),
+  
+  edad_pico = c(
+    edad_pico_inc_ols,
+    edad_pico_cond_ols,
+    edad_pico_inc_wls,
+    edad_pico_cond_wls
+  ),
+  
+  se_bootstrap = c(
+    se_inc_ols,
+    se_cond_ols,
+    se_inc_wls,
+    se_cond_wls
+  ),
+  
+  ic_inferior = c(
+    ic_inc_ols[1],
+    ic_cond_ols[1],
+    ic_inc_wls[1],
+    ic_cond_wls[1]
+  ),
+  
+  ic_superior = c(
+    ic_inc_ols[2],
+    ic_cond_ols[2],
+    ic_inc_wls[2],
+    ic_cond_wls[2]
+  ),
+  
+  r2 = c(
+    summary(mod_incondicional_ols)$r.squared,
+    summary(mod_condicional_ols)$r.squared,
+    summary(mod_incondicional_wls)$r.squared,
+    summary(mod_condicional_wls)$r.squared
+  )
 )
 
 tab_edad_pico
@@ -263,89 +428,142 @@ tab_edad_pico
 relab_modal <- geih |> count(relab_fac, sort = TRUE) |> slice(1) |> pull(relab_fac)
 
 grilla_edad <- tibble(
-  age              = seq(min(geih$age), max(geih$age), by = 1),
-  totalHoursWorked = mean(geih$totalHoursWorked),
-  relab_fac        = relab_modal
+  age = seq(min(geih$age),max(geih$age),by = 1),
+  totalHoursWorked =weighted.mean(geih$totalHoursWorked,w = geih$fweight),
+  relab_fac = relab_modal
 )
 
 grilla_edad <- grilla_edad |>
   mutate(
-    pred_incondicional = predict(modelo_incondicional, newdata = grilla_edad),
-    pred_condicional   = predict(modelo_condicional,   newdata = grilla_edad)
+    pred_incondicional = predict(mod_incondicional_ols, newdata = grilla_edad),
+    pred_condicional   = predict(mod_condicional_ols,   newdata = grilla_edad)
   )
 
-grilla_larga <- grilla_edad |>
-  select(age, pred_incondicional, pred_condicional) |>
-  pivot_longer(cols = c(pred_incondicional, pred_condicional),
-               names_to = "especificacion", values_to = "prediccion") |>
-  mutate(especificacion = recode(especificacion,
-                                 "pred_incondicional" = "Incondicional",
-                                 "pred_condicional"   = "Condicional"))
+grilla_edad <- grilla_edad |>
+  mutate(pred_inc_ols =predict(mod_incondicional_ols,newdata = grilla_edad),
+    pred_cond_ols =predict(mod_condicional_ols,newdata = grilla_edad),
+    pred_inc_wls =predict(mod_incondicional_wls,newdata = grilla_edad),
+    pred_cond_wls = predict(mod_condicional_wls,newdata = grilla_edad))
 
-fig_perfiles <- ggplot() +
-  # Puntos: el promedio observado por edad (el hecho a explicar).
+grilla_ols <- grilla_edad |>
+  select(age,pred_inc_ols,pred_cond_ols) |>
+  pivot_longer(-age,
+    names_to = "modelo",
+    values_to = "pred"
+  )
+
+fig_perfiles_ols <- ggplot() +
+  
   geom_point(
     data = filter(perfil_observado, n >= 20),
-    aes(x = age, y = log_y_promedio),
-    color = "grey55", size = 1.8, alpha = 0.8
+    aes(age, log_y_promedio),
+    color = "grey55"
   ) +
-  # Líneas: los perfiles estimados.
+  
   geom_line(
-    data = grilla_larga,
-    aes(x = age, y = prediccion, color = especificacion),
+    data = grilla_ols,
+    aes(age, pred, color = modelo),
     linewidth = 1.1
   ) +
-  # Banda vertical: el intervalo bootstrap de la edad pico incondicional.
-  annotate("rect",
-           xmin = ic_incondicional[1], xmax = ic_incondicional[2],
-           ymin = -Inf, ymax = Inf, alpha = 0.15, fill = "#d55e00") +
-  geom_vline(xintercept = edad_pico_incondicional,
-             color = "#d55e00", linetype = "dashed") +
-  scale_color_manual(values = c("Incondicional" = "#3a5e8c",
-                                "Condicional"   = "#009e73")) +
+  
   labs(
-    title = "Perfil edad-ingreso laboral en Bogotá",
-    subtitle = "Ingreso promedio observado por edad y perfiles estimados",
-    x = "Edad (años)",
-    y = "log(ingreso laboral mensual)",
-    color = "Especificación",
-    caption = paste0("Fuente: cálculos propios con la muestra GEIH 2018 - Bogotá.\n",
-                     "Nota: el perfil condicional se evalúa en las horas promedio y ",
-                     "en la categoría de vinculación más frecuente. La banda sombreada ",
-                     "es el intervalo bootstrap al 95% de la edad pico incondicional.")
+    title = "Perfil edad-ingreso sin pesos",
+    subtitle = "Modelos OLS"
   ) +
-  theme_bw() +
-  theme(legend.position = "bottom")
+  
+  theme_bw()
+fig_perfiles_ols
 
-fig_perfiles
+grilla_wls <- grilla_edad |>
+  select(age,pred_inc_wls,pred_cond_wls) |>
+  pivot_longer(-age,
+    names_to = "modelo",
+    values_to = "pred"
+  )
+
+fig_perfiles_wls <- ggplot() +
+  
+  geom_point(
+    data = filter(perfil_observado, n >= 20),
+    aes(age, log_y_promedio),
+    color = "grey55"
+  ) +
+  
+  geom_line(
+    data = grilla_wls,
+    aes(age, pred, color = modelo),
+    linewidth = 1.1
+  ) +
+  
+  labs(
+    title = "Perfil edad-ingreso con pesos de expansión",
+    subtitle = "Modelos WLS"
+  ) +
+  
+  theme_bw()
+
+fig_perfiles_wls
 
 ##### 10. Exportar #####
 
-ggsave(file.path(ruta_figuras, "fig_perfiles_edad.png"),
-       fig_perfiles, width = 7.5, height = 5, dpi = 300)
+ggsave(file.path(ruta_figuras,"fig_perfiles_ols.png"),
+  fig_perfiles_ols,
+  width = 7.5,
+  height = 5,
+  dpi = 300
+)
+
+ggsave(file.path(ruta_figuras,"fig_perfiles_wls.png"),
+  fig_perfiles_wls,
+  width = 7.5,
+  height = 5,
+  dpi = 300
+)
 
 ggsave(file.path(ruta_figuras, "fig_boot_pico.png"),
        fig_boot_pico, width = 7, height = 4.5, dpi = 300)
 
 write_csv(tab_edad_pico, file.path(ruta_tablas, "tab_edad_pico.csv"))
 
-stargazer(
-  modelo_incondicional, modelo_condicional,
+stargazer(mod_incondicional_ols,mod_condicional_ols,
   type = "html",
-  out = file.path(ruta_tablas, "tab_perfil_edad.html"),
+  out = file.path(ruta_tablas,"tab_perfil_edad_ols.html"),
   title = "Perfil edad-ingreso laboral",
-  column.labels = c("Incondicional", "Condicional"),
-  dep.var.labels = "log(ingreso laboral mensual)",
-  covariate.labels = c("Edad", "Edad al cuadrado", "Horas trabajadas"),
+  column.labels = c("Inc. OLS","Cond. OLS"),
+  dep.var.labels ="log(ingreso laboral mensual)",
+  covariate.labels = c("Edad","Edad al cuadrado","Horas trabajadas"),
   omit = "relab_fac",
-  omit.labels = "Efectos de tipo de vinculación",
-  keep.stat = c("n", "rsq", "adj.rsq"),
+  omit.labels ="Efectos de tipo de vinculación",
+  add.lines = list(c("Controles de vinculación", "No", "Sí")),
+  keep.stat = c("n","rsq","adj.rsq"),
   digits = 4
+)
+
+stargazer(mod_incondicional_wls,mod_condicional_wls,
+          type = "html",
+          out = file.path(ruta_tablas,"tab_perfil_edad_ols.html"),
+          title = "Perfil edad-ingreso laboral",
+          column.labels = c("Inc. WLS","Cond. WLS"),
+          dep.var.labels ="log(ingreso laboral mensual)",
+          covariate.labels = c("Edad","Edad al cuadrado","Horas trabajadas"),
+          omit = "relab_fac",
+          omit.labels ="Efectos de tipo de vinculación",
+          add.lines = list(c("Controles de vinculación", "No", "Sí")),
+          keep.stat = c("n","rsq","adj.rsq"),
+          digits = 4
 )
 
 # Guardamos las réplicas bootstrap por si hay que rehacer el intervalo sin
 # volver a correr los 2.000 modelos.
 saveRDS(
-  list(incondicional = picos_incondicional, condicional = picos_condicional),
-  file.path(dirname(ruta_datos), "boot_edad_pico.rds")
+  list(
+    picos_inc_ols  = picos_inc_ols,
+    picos_cond_ols = picos_cond_ols,
+    picos_inc_wls  = picos_inc_wls,
+    picos_cond_wls = picos_cond_wls
+  ),
+  file.path(
+    dirname(ruta_datos),
+    "boot_edad_pico.rds"
+  )
 )
