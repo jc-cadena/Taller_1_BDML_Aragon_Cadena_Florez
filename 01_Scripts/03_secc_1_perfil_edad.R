@@ -81,18 +81,8 @@ if (n_no_finito > 0) {
   geih <- geih |> filter(is.finite(log_y))
 }
 
-# Muestra de análisis común a las tres secciones.
-#
-# ¿Por qué imponer casos completos sobre TODAS las variables de las tres
-# secciones y no solo sobre las que usa esta? Porque si cada sección corriera
-# sobre un subconjunto distinto, los resultados no serían comparables entre
-# secciones ni entre modelos dentro de la Sección 3 (lm() elimina filas con NA
-# silenciosamente, así que dos modelos con distintos regresores se estimarían
-# sobre muestras distintas y sus RMSE no serían comparables). Un único N para
-# todo el taller es más fácil de defender.
-#
-# Alternativa si el costo en observaciones resulta alto: usar por sección solo
-# las variables que esa sección necesita, y reportar el N de cada tabla.
+# Vamos a usar por sección solo las variables que se necesitan
+# (reportar el N de cada tabla)
 vars_analisis <- c("log_y", "age", "Female", "educ_fac", "totalHoursWorked",
                    "relab_fac", "formal_fac", "sizeFirm_fac", "oficio_fac",
                    "estrato_fac", "p6426", "jefe_hogar", "n_ninos_under5",
@@ -110,12 +100,8 @@ c(antes = n_antes, despues = nrow(geih), perdidas = n_antes - nrow(geih))
 
 ##### 3. Descriptiva que motiva la sección #####
 
-# Antes de estimar nada, mostramos el hecho estilizado que justifica meter un
-# término cuadrático. Es el ejercicio de la clase 1 del titular: calcular
-# E[y | X = x] agrupando por la variable explicativa. Si el promedio de log(w)
-# por edad sube y luego baja, un modelo lineal no puede capturarlo y el
-# cuadrático se justifica con evidencia, no por costumbre.
-
+# Mostramos el hecho estilizado que justifica meter un término cuadrático.
+# A partir de calcular E[y | X = x] agrupando por la variable explicativa.
 perfil_observado <- geih |>
   group_by(age) |>
   summarise(
@@ -147,15 +133,6 @@ fig_perfil_observado
 #### 4. Perfil incondicional ####
 
 # log(w) = b1 + b2*Edad + b3*Edad^2 + u
-##### IMPORTANTE ####
-# Sobre I(age^2): le dice a R "eleva al cuadrado aquí adentro y trata el
-# resultado como un regresor". La alternativa es crear una columna age2 en la
-# base. Preferimos I() por dos razones:
-#   - predict() sobre una grilla nueva de edades funciona sin recalcular nada;
-#   - en la Sección 3 permutamos columnas para medir importancia de variables, y
-#     ahí es indispensable que la edad sea UNA sola columna. Si age2 fuera una
-#     columna aparte, barajar age dejando age2 quieta crearía observaciones
-#     imposibles (edad 25 con cuadrado 2500) y la medida no significaría nada.
 
 forma_incondicional <- log_y ~ age + I(age^2)
 
@@ -165,16 +142,7 @@ summary(modelo_incondicional)
 
 ###### 5. La edad pico #####
 
-# El perfil es una parábola. Derivando respecto de la edad e igualando a cero:
-#
 #   d log(w) / d Edad = b2 + 2*b3*Edad = 0   =>   Edad* = -b2 / (2*b3)
-#
-# Dos condiciones que hay que VERIFICAR, no suponer:
-#   (i)  b3 < 0. Si el coeficiente cuadrático es positivo, el vértice es un
-#        mínimo y hablar de "edad pico" sería incorrecto.
-#   (ii) Edad* debe caer dentro del rango de edades observado. Si el vértice
-#        queda en 85 años y casi no hay ocupados de esa edad, el pico es una
-#        extrapolación de la forma funcional, no un hecho de los datos.
 
 calcular_edad_pico <- function(modelo) {
   b_edad  <- coef(modelo)["age"]
@@ -190,26 +158,6 @@ range(geih$age)                               # ¿está dentro del rango?
 
 
 ##### 6. Intervalo de confianza bootstrap para la edad pico #####
-
-# ¿Por qué bootstrap y no una fórmula analítica?
-#
-# La edad pico no es un coeficiente: es una FUNCIÓN NO LINEAL de dos
-# coeficientes, -b2/(2*b3). R reporta errores estándar de b2 y de b3, pero no del
-# cociente. Se podría aproximar con el método delta, que linealiza la función
-# alrededor de los estimadores; el bootstrap evita esa aproximación y captura la
-# correlación entre b2 y b3 sin escribir ninguna derivada. Es exactamente el
-# "Caso 2" de la clase 3 del titular (la elasticidad que depende de tres
-# coeficientes).
-#
-# El procedimiento, tal como en clase:
-#   1. Tomar una muestra de tamaño n CON REEMPLAZO de la base original.
-#   2. Re-estimar TODO el modelo en esa muestra.
-#   3. Calcular la edad pico implicada.
-#   4. Repetir B veces y usar la distribución de las B edades pico.
-#
-# Es importante re-estimar el modelo completo en cada réplica y no solo
-# re-muestrear los coeficientes: el bootstrap tiene que reproducir todo el
-# proceso que genera el estimador, incluida la incertidumbre de la estimación.
 
 boot_edad_pico <- function(datos, formula, B = 1000, semilla = 123) {
 
@@ -231,9 +179,7 @@ boot_edad_pico <- function(datos, formula, B = 1000, semilla = 123) {
   picos
 }
 
-# B = 1000 réplicas, igual que en clase. El error de simulación es del orden de
-# 1/sqrt(B); si el intervalo se ve inestable entre corridas, subir a 5.000 o
-# 10.000 (cuesta tiempo, no sesgo).
+# B = 1000 réplicas
 picos_incondicional <- boot_edad_pico(geih, forma_incondicional, B = 1000)
 
 ic_incondicional <- quantile(picos_incondicional, probs = c(0.025, 0.975))
@@ -243,9 +189,7 @@ edad_pico_incondicional
 ic_incondicional
 se_incondicional
 
-# Histograma de la distribución bootstrap. Sirve para verificar que no haya
-# réplicas absurdas (si en alguna muestra b3 sale cerca de cero, el cociente
-# explota) y para mostrar en la presentación de dónde sale el intervalo.
+# Histograma de la distribución bootstrap.
 fig_boot_pico <- tibble(pico = picos_incondicional) |>
   ggplot(aes(x = pico)) +
   geom_histogram(bins = 40, fill = "#3a5e8c", color = "white", alpha = 0.85) +
@@ -264,33 +208,8 @@ fig_boot_pico <- tibble(pico = picos_incondicional) |>
 
 fig_boot_pico
 
+##### 7. Perfil condicional #####
 
-# ------------------------------------------------------------------------------
-# 7. Perfil condicional
-# ------------------------------------------------------------------------------
-# El taller fija los controles: horas trabajadas (totalHoursWorked) y tipo de
-# vinculación (relab). No hay nada que escoger acá; la elección de controles
-# viene en la Sección 2.
-#
-# Qué cambia conceptualmente: el perfil incondicional describe cómo se relaciona
-# el ingreso con la edad sin separar por qué. Parte de esa relación opera porque
-# la gente mayor trabaja más (o menos) horas y porque la composición del tipo de
-# empleo cambia con la edad. Al controlar, el coeficiente de la edad pasa a
-# capturar el cambio en el ingreso a lo largo del ciclo de vida MANTENIENDO
-# FIJAS las horas y el tipo de vinculación, que es más cercano al retorno de la
-# experiencia acumulada del que habla la teoría del capital humano.
-#
-#### IMPORTANTE - HORAS Y TIPO VINCULACIÓN ####
-#Advertencia para la presentación: horas y tipo de vinculación son, ellas
-# mismas, decisiones del trabajador que responden a la edad. Al controlarlas
-# bloqueamos parte del efecto de la edad. No es un error (el taller lo pide así),
-# pero explica por qué esperamos un perfil más plano y una edad pico distinta.
-#
-# Nota sobre relab: 02_clean_data.R agrupó las categorías 6 a 9 en "Otro" porque
-# tenían 207, 41, 1 y 9 observaciones. Con n = 1 el coeficiente de esa categoría
-# no es identificable de forma confiable. Si quieren mostrar la versión con las
-# 9 categorías originales como robustez, la base conserva `relab_detailed`:
-#
 #   lm(log_y ~ age + I(age^2) + totalHoursWorked + factor(relab_detailed), data = geih)
 
 forma_condicional <- log_y ~ age + I(age^2) + totalHoursWorked + relab_fac
@@ -308,13 +227,7 @@ se_condicional    <- sd(picos_condicional)
 edad_pico_condicional
 ic_condicional
 
-
-# ------------------------------------------------------------------------------
-# 8. Tabla de resultados
-# ------------------------------------------------------------------------------
-# Para la presentación NO se pega la salida de la consola: se exporta con
-# type = "latex" (Beamer/Overleaf) o type = "html" (PowerPoint / Google Slides).
-# El taller es explícito: las tablas no pueden ser capturas de pantalla de R.
+##### 8. Tabla de resultados #####
 
 stargazer(
   modelo_incondicional, modelo_condicional,
@@ -343,15 +256,9 @@ tab_edad_pico <- tibble(
 
 tab_edad_pico
 
+##### 9. Visualización de los dos perfiles #####
 
-# ------------------------------------------------------------------------------
-# 9. Visualización de los dos perfiles
-# ------------------------------------------------------------------------------
-# Construimos una grilla con valores ajustados de edades y predecimos
-# sobre ella. Para el modelo condicional hay que fijar los controles en algún valor, porque el perfil
-# predicho depende de ellos: usamos la media de las horas y la categoría de
-# vinculación más frecuente. Hay que decir en la diapositiva en qué valores se
-# fijaron; "el perfil del trabajador promedio" no es un objeto único.
+# Usamos la media de las horas y la categoría de vinculación más frecuente. 
 
 relab_modal <- geih |> count(relab_fac, sort = TRUE) |> slice(1) |> pull(relab_fac)
 
@@ -412,10 +319,8 @@ fig_perfiles <- ggplot() +
 
 fig_perfiles
 
+##### 10. Exportar #####
 
-# ------------------------------------------------------------------------------
-# 10. Exportar
-# ------------------------------------------------------------------------------
 ggsave(file.path(ruta_figuras, "fig_perfiles_edad.png"),
        fig_perfiles, width = 7.5, height = 5, dpi = 300)
 
