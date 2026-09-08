@@ -14,7 +14,7 @@ p_load(
   boot         # Bootstrap para errores estándar
 )
 
-geih_clean <- readRDS(here("Data", "Processed", "geih_clean.rds"))
+geih_clean <- readRDS(here("02_Data", "Processed", "geih_clean.rds"))
 
 # NOTA: Female, relab y maxEducLevel ya vienen correctamente construidos/tipados
 # desde 02_clean_data.R. No es necesario recrearlos aquí.
