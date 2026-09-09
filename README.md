@@ -32,7 +32,7 @@ Taller_1_BDML_Aragon_Cadena_Florez/
 ├── 03_Output/
 │   ├── Figures/                    # figuras .png generadas por los módulos 03-05
 │   └── Tables/                     # tablas .csv/.html generadas por los módulos 03-05
-└── 04_Slides/                      # presentación para la sustentación oral
+└── 04_Slides/                      # presentaciones para la sustentación oral
 ```
 
 ## Datos
