@@ -1,9 +1,9 @@
 # Taller 1 — Big Data y Machine Learning (MECA 4107)
 
 **Autores:**
-Mauricio José Aragón Ramírez (código: 201729052)
-Jonathan Camilo Cadena Silva (código: 202315765)
-Julio Esteban Flórez Pérez (código: 202615893)
+Mauricio José Aragón Ramírez (código: 201729052),
+Jonathan Camilo Cadena Silva (código: 202315765),
+Julio Esteban Flórez Pérez (código: 202615893).
 
 > Un colaborador (o el evaluador) debe poder clonar el repositorio, correr un único script, y reproducir íntegramente el análisis y todos sus resultados exportados, sin necesidad de intervención manual adicional.
 
