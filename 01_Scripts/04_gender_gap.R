@@ -191,6 +191,7 @@ se_analytic_full   <- summary(model_gap_conditional_full)$coefficients["Female",
 tabla_se_comparativa <- tibble(
   especificacion = c("No condicional", "Condicional 1 (edad+educ)",
                      "Condicional segura", "Condicional extra"),
+  n              = rep(nobs(model_gap_unconditional), 4),
   coef_female    = c(coef(model_gap_unconditional)["Female"],
                      coef(model_gap_conditional_1)["Female"],
                      coef(model_gap_conditional_safe)["Female"],
