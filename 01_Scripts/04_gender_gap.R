@@ -14,7 +14,52 @@ p_load(
   boot         # Bootstrap para errores estándar
 )
 
-geih_clean <- readRDS(here("02_Data", "Processed", "geih_clean.rds"))
+#geih_clean <- readRDS(here("02_Data", "Processed", "geih_clean.rds"))
+geih_clean <- readRDS("C:/Users/maoar/OneDrive/MEcA/2026-20/Big Data/Talleres/1/02_Data/Processed/geih_clean.rds")
+
+vars3 <- c("chunk", "age", "totalHoursWorked", "relab", "log_w", "Female", "p6050", "jefe_hogar",
+           "n_ninos_under5", "n_ninos_under10", "total_personas","maxEducLevel", "college", "ocu",
+           "relab", "formal", "sizeFirm", "y_total_m", "estrato1","fweight","p6426")
+
+geih_clean <- geih_clean %>% 
+  mutate(log_w = log(y_total_m/1e6),
+         relab = as.factor(relab)) %>% 
+  select(vars3)
+
+table(geih_clean$p6050)
+
+geih_clean <- geih_clean |>
+  mutate(
+    
+    # Factores
+    Female       = as.numeric(Female),
+    age          = as.numeric(age),
+    pesos        = as.numeric(fweight),
+    tiempotrabajo = as.numeric(p6426),
+    RelacionJefe = factor(p6050, levels = as.character(1:9),
+                          labels = c("Jefe","Pareja","Hijo","Nieto",
+                                     "Otro pariente", "Empleado","Pensionista",
+                                     "Trabajador","Otro no pariente")),
+    educ_fac     = factor(maxEducLevel, levels = as.character(1:7),
+                          labels = c("Ninguno", "Preescolar", "Primaria incompleta",
+                                     "Primaria completa", "Secundaria incompleta",
+                                     "Secundaria completa", "Superior")),
+    relab_fac    = factor(relab, levels = c("1", "2", "3", "4", "5", "otros"),
+                          labels = c("Empresa particular", "Gobierno",
+                                     "Empleado doméstico", "Cuenta propia",
+                                     "Patrón o empleador", "Otro")),
+    formal_fac   = factor(formal, levels = c(0, 1), labels = c("Informal", "Formal")),
+    sizeFirm_fac = factor(sizeFirm, levels = 1:5,
+                          labels = c("Cuenta propia", "2-5 trabajadores",
+                                     "6-10 trabajadores", "11-50 trabajadores",
+                                     "Más de 50 trabajadores")),
+    estrato_fac  = factor(estrato1),
+    
+  )
+
+geih_clean <- geih_clean |>
+  drop_na(all_of(vars3)) |>
+  droplevels()
 
 # NOTA: Female, relab y maxEducLevel ya vienen correctamente construidos/tipados
 # desde 02_clean_data.R. No es necesario recrearlos aquí.
@@ -56,15 +101,50 @@ ci_gap_uncond
 # 2. Brecha de género CONDICIONAL "segura"
 #    log(w) = b1 + b2*Female + b3*age + b4*age^2 + maxEducLevel + u
 # =============================================================
-model_gap_conditional_safe <- lm(
+model_gap_conditional_1 <- lm(
   log(y_total_m) ~ Female + age + I(age^2) + maxEducLevel,
   data = geih_clean
 )
-stargazer(model_gap_unconditional, model_gap_conditional_safe, type = "text")
+stargazer(model_gap_unconditional, model_gap_conditional_1, type = "text")
+
+female_coef_fn_1 <- function(data, index) {
+  model <- lm(
+    log(y_total_m) ~ Female + age + I(age^2) + maxEducLevel,
+    data = data, subset = index
+  )
+  coef(model)["Female"]
+}
+
+# Verificamos que reproduce el resultado original
+female_coef_fn_1(geih_clean, 1:nrow(geih_clean))
+
+set.seed(123)
+boot_gap_1 <- boot(
+  data = geih_clean,
+  statistic = female_coef_fn_1,
+  R = 1000
+)
+boot_gap_1
+
+ci_gap_1 <- boot.ci(boot_gap_1, type = "perc")
+ci_gap_1
+
+# =============================================================
+# 3. Brecha de género CONDICIONAL
+#    log(w) = b1 + b2*Female + b3*age + b4*age^2 + maxEducLevel 
+#    + horas_trabajadas + industria + formal + tamaño_firma + u
+# =============================================================
+model_gap_conditional_safe <- lm(
+  log(y_total_m) ~ Female + age + I(age^2) + educ_fac + totalHoursWorked +
+    relab_fac + formal_fac + sizeFirm_fac,
+  data = geih_clean
+)
+stargazer(model_gap_unconditional,model_gap_conditional_1, model_gap_conditional_safe, type = "text")
 
 female_coef_fn_safe <- function(data, index) {
   model <- lm(
-    log(y_total_m) ~ Female + age + I(age^2) + maxEducLevel,
+    log(y_total_m) ~ Female + age + I(age^2) + educ_fac + totalHoursWorked +
+      relab_fac + formal_fac + sizeFirm_fac,
     data = data, subset = index
   )
   coef(model)["Female"]
@@ -85,18 +165,22 @@ ci_gap_safe <- boot.ci(boot_gap_safe, type = "perc")
 ci_gap_safe
 
 # =============================================================
-# 3. Brecha de género CONDICIONAL "completa"
+# 4. Brecha de género CONDICIONAL "extra"
 #    + totalHoursWorked + relab (posibles bad controls, ver discusión)
 # =============================================================
 model_gap_conditional_full <- lm(
-  log(y_total_m) ~ Female + age + I(age^2) + maxEducLevel + totalHoursWorked + relab,
+  log(y_total_m) ~ Female + age + I(age^2) + educ_fac + totalHoursWorked +
+    relab_fac + formal_fac + sizeFirm_fac + estrato_fac + n_ninos_under5:Female +
+    jefe_hogar,
   data = geih_clean
 )
 stargazer(model_gap_unconditional, model_gap_conditional_safe, model_gap_conditional_full, type = "text")
 
 female_coef_fn_full <- function(data, index) {
   model <- lm(
-    log(y_total_m) ~ Female + age + I(age^2) + maxEducLevel + totalHoursWorked + relab,
+    log(y_total_m) ~ Female + age + I(age^2) + educ_fac + totalHoursWorked +
+      relab_fac + formal_fac + sizeFirm_fac + estrato_fac + n_ninos_under5:Female +
+      jefe_hogar,
     data = data, subset = index
   )
   coef(model)["Female"]
@@ -124,11 +208,13 @@ ci_gap_full
 # =============================================================
 
 # Paso 1: residualizamos log(y_total_m) contra X1 (sin Female)
-model_y_on_X1 <- lm(log(y_total_m) ~ age + I(age^2) + maxEducLevel, data = geih_clean)
+model_y_on_X1 <- lm(log(y_total_m) ~ age + I(age^2) + educ_fac + totalHoursWorked +
+                      relab_fac + formal_fac + sizeFirm_fac, data = geih_clean)
 resid_y <- residuals(model_y_on_X1)
 
 # Paso 2: residualizamos Female contra los mismos X1
-model_D_on_X1 <- lm(Female ~ age + I(age^2) + maxEducLevel, data = geih_clean)
+model_D_on_X1 <- lm(Female ~ age + I(age^2) + educ_fac + totalHoursWorked +
+                      relab_fac + formal_fac + sizeFirm_fac, data = geih_clean)
 resid_D <- residuals(model_D_on_X1)
 
 # Paso 3: la regresión CORTA sobre los residuos recupera el mismo coeficiente
@@ -162,8 +248,10 @@ c("SE FWL (fórmula exacta)" = se_fwl_analytic, "SE regresión completa" = se_fu
 # sobre cada muestra bootstrap, para obtener el SE bootstrap del coeficiente FWL
 fwl_coef_fn <- function(data, index) {
   d <- data[index, ]
-  resid_y_b <- residuals(lm(log(y_total_m) ~ age + I(age^2) + maxEducLevel, data = d))
-  resid_D_b <- residuals(lm(Female ~ age + I(age^2) + maxEducLevel, data = d))
+  resid_y_b <- residuals(lm(log(y_total_m) ~ age + I(age^2) + educ_fac + totalHoursWorked +
+                              relab_fac + formal_fac + sizeFirm_fac, data = d))
+  resid_D_b <- residuals(lm(Female ~ age + I(age^2) + educ_fac + totalHoursWorked +
+                              relab_fac + formal_fac + sizeFirm_fac, data = d))
   coef(lm(resid_y_b ~ resid_D_b))["resid_D_b"]
 }
 
