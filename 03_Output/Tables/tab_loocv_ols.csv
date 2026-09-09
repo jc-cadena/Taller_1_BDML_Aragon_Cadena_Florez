@@ -1,0 +1,4 @@
+Métrica,Valor
+RMSE Entrenamiento,0.5031409158479595
+RMSE Validación (Chunks 8-10),0.5237636853997899
+RMSE LOOCV (Analítico),0.5076155383822089
