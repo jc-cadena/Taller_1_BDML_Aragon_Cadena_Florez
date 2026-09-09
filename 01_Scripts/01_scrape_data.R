@@ -5,9 +5,24 @@
 # Output: 02_Data/Raw/geih_raw.Rds
 
 library(pacman)
-p_load(tidyverse, rvest, here)
+p_load(tidyverse, rvest, here, robotstxt)
 
 base_url <- "https://ignaciomsarmiento.github.io/GEIH2018_sample/"
+
+# =============================================================
+# Verificación de robots.txt antes de scrapear
+# =============================================================
+# Confirmamos que el acceso automatizado a las páginas de interés está
+# permitido antes de hacer ninguna solicitud.
+permitido <- paths_allowed(
+  paths = paste0(base_url, "pages/geih_page_1.html")
+)
+
+if (!permitido) {
+  stop("robots.txt no permite el acceso a esta ruta -- deteniendo el scraping.")
+}
+
+message("robots.txt permite el acceso. Continuamos con el scraping.")
 
 # Función para extraer la tabla de un chunk
 scrape_chunk <- function(chunk_number) {
@@ -47,3 +62,4 @@ saveRDS(
   geih_raw,
   here("02_Data", "Raw", "geih_raw.Rds")
 )
+

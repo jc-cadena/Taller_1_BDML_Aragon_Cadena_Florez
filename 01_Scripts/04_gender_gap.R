@@ -22,7 +22,7 @@ vars3 <- c("chunk", "age", "totalHoursWorked", "relab", "log_w", "Female", "p605
            "relab", "formal", "sizeFirm", "y_total_m", "estrato1","fweight","p6426")
 
 geih_clean <- geih_clean %>% 
-  mutate(log_w = log(y_total_m/1e6),
+  mutate(log_w = log(y_total_m),
          relab = as.factor(relab)) %>% 
   select(vars3)
 
