@@ -18,8 +18,8 @@ Taller_1_BDML_Aragon_Cadena_Florez/
 ├── Taller_1_BDML_Aragon_Cadena_Florez.Rproj
 ├── 01_Scripts/
 │   ├── MasterScript.R              # script maestro: corre todo el pipeline en orden
-│   ├── 01_scrape_data.R            # Sección 3: scraping de la muestra GEIH 2018
-│   ├── 02_clean_data.R             # Sección 3: limpieza y definición de la muestra
+│   ├── 01_scrape_data.R            # scraping de la muestra GEIH 2018
+│   ├── 02_clean_data.R             # limpieza y definición de la muestra
 │   ├── 03_age_income_profile.R     # Sección 1: perfil edad-ingreso
 │   ├── 04_gender_gap.R             # Sección 2: brecha de género
 │   └── 05_prediction.R             # Sección 3: predicción del ingreso fuera de muestra
